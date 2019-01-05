@@ -1,12 +1,14 @@
-num = 42
+print('Player starting HP: ' .. player:hp())
+print('Player starting Zeny: ' .. player:zeny())
 
-if num > 40 then
-  print('over 40')
-end
+print('Now lets add some zenies')
 
-playerId = 'foo'
-playerHp = getPlayerHp(playerId)
+player:add_zeny(1)
 
-print('Players current HP:' .. player():hp())
-print('Players current HP:' .. player:hp())
-print('Players current HP:' .. player())
+print('Player current Zeny: ' .. player:zeny())
+
+print('Now lets add some zenies')
+
+player:add_zeny(10)
+
+print('Player current Zeny: ' .. player:zeny())
