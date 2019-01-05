@@ -1,0 +1,8 @@
+[package]
+name = "lua-testing"
+version = "0.1.0"
+authors = ["Allan J. <contato.allanj@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+rlua = "0.15.3"
