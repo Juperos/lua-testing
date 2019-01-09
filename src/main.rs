@@ -1,58 +1,85 @@
-use rlua::{Lua, UserData, UserDataMethods};
-use std::fs;
+use hlua::Lua;
+use std::fs::File;
+use std::path::Path;
+
+use rusqlite::Connection;
 
 #[derive(Debug)]
 struct Player {
-    id: String,
-    hp: u8,
-    zeny: u32,
+    id: i32,
+    hp: i32,
+    zeny: i32,
 }
 
-impl UserData for Player {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("hp", |_, player, _: ()| Ok(player.hp));
-        methods.add_method("zeny", |_, player, _: ()| Ok(player.zeny));
+fn custom_print(text: String) {
+    println!("FROM LUA: {:?}", text);
+}
 
-        methods.add_method_mut("add_zeny", |_, player, amount: u32| {
-            player.zeny += amount;
-            Ok(())
-        });
-    }
+fn find_player_by_id(conn: &Connection, id: &i32) -> Result<Player, rusqlite::Error> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT * FROM player
+         WHERE id=?",
+        )
+        .unwrap();
+
+    let player = stmt
+        .query_map(&[&id], |row| Player {
+            id: row.get(0),
+            hp: row.get(1),
+            zeny: row.get(2),
+        })?
+        .last()
+        .unwrap();
+
+    player
+}
+
+fn set_player_hp(conn: &Connection, id: &i32, amount: &i32) {
+    conn.execute(
+        "UPDATE player
+             SET hp=?1
+             WHERE id=?2",
+        &[&amount, &id],
+    )
+    .unwrap();
 }
 
 fn main() {
-    let script = fs::read_to_string("foo.lua").expect("Something went wrong reading foo.lua file");
+    let db: String = std::env::args().nth(1).unwrap();
 
-    let lua = Lua::new();
+    let script: String = std::env::args().nth(2).unwrap();
 
-    let globals = lua.globals();
+    let player_id: i32 = std::env::args().nth(3).unwrap().parse().unwrap();
 
-    let player = Player {
-        id: String::from("123"),
-        hp: 1,
-        zeny: 1,
-    };
+    let conn = Connection::open(db).unwrap();
 
-    let console_print = lua.create_function(|_, text: (String)| {
-        println!("FROM LUA: {:?}", text);
-        Ok(())
-    });
+    {
+        let mut lua = Lua::new();
 
-    globals.set("player", player).unwrap();
+        let get_hp = || {
+            let player = match find_player_by_id(&conn, &player_id) {
+                Ok(p) => p,
+                Err(e) => panic!("Error {:?}", e),
+            };
 
-    // let getPlayer = lua.create_function(move |_, id: (String)| {
-    //     let Some(player) = find_player_by_id(id, &players);
-    //     Ok(player)
-    // });
+            player.hp
+        };
 
-    // let getPlayerHP = lua.create_function(move |_, id: (String)| {
-    //     Ok(match find_player_by_id(id, &players) {
-    //         Some(player) => player.hp,
-    //         None => 0,
-    //     })
-    // });
+        let set_hp = |amount: i32| {
+            let player = match find_player_by_id(&conn, &player_id) {
+                Ok(p) => p,
+                Err(e) => panic!("Error {:?}", e),
+            };
 
-    globals.set("print", console_print.unwrap()).unwrap();
+            set_player_hp(&conn, &player.id, &(player.hp + amount))
+        };
 
-    lua.eval::<_, bool>(&script, None).unwrap();
+        lua.set("print", hlua::function1(custom_print));
+        lua.set("hp", hlua::function0(get_hp));
+        lua.set("add_hp", hlua::function1(set_hp));
+
+        lua.execute_from_reader::<(), _>(File::open(&Path::new(&script)).unwrap())
+            .unwrap();
+    }
 }
