@@ -2,7 +2,7 @@ use hlua::Lua;
 use std::fs::File;
 use std::path::Path;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, NO_PARAMS};
 
 #[derive(Debug)]
 struct Player {
@@ -12,7 +12,41 @@ struct Player {
 }
 
 fn custom_print(text: String) {
-    println!("FROM LUA: {:?}", text);
+    println!("SCRIPT SAID: {:?}", text);
+}
+
+fn create_db(conn: &Connection) {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS player (
+            id    INTEGER PRIMARY KEY AUTOINCREMENT,
+            hp    INTEGER NOT NULL,
+            zeny  INTEGER NULL
+        )",
+        NO_PARAMS,
+    )
+    .unwrap();
+}
+
+fn create_player(conn: &Connection, player: &Player) {
+    conn.execute(
+        "INSERT INTO
+            player (hp, zeny)
+        VALUES
+            (?1, ?2)",
+        &[player.hp, player.zeny],
+    )
+    .unwrap();
+}
+
+fn setup_db(conn: &Connection) {
+    create_db(conn);
+
+    let player = Player {
+        id: 0,
+        hp: 1000,
+        zeny: 1,
+    };
+    create_player(&conn, &player);
 }
 
 fn find_player_by_id(conn: &Connection, id: &i32) -> Result<Player, rusqlite::Error> {
@@ -53,6 +87,8 @@ fn main() {
     let player_id: i32 = std::env::args().nth(3).unwrap().parse().unwrap();
 
     let conn = Connection::open(db).unwrap();
+
+    setup_db(&conn);
 
     {
         let mut lua = Lua::new();
